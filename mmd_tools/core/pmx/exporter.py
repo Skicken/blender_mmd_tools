@@ -159,9 +159,12 @@ class __PmxExporter:
                     pv.normal = v.normal
                     pv.uv = self.flipUV_V(v.uv)
                     pv.edge_scale = v.edge_scale
-                    for _uvzw in v.add_uvs:
+                    pv.additional_uvs = [(0, 0, 0, 0) for _ in range(self.__add_uv_count)]
+                    for uv_index,_uvzw in enumerate(v.add_uvs):
                         if _uvzw:
-                            pv.additional_uvs.append(self.flipUV_V(_uvzw[0]) + self.flipUV_V(_uvzw[1]))
+                            uv = _uvzw[0]
+                            zw = _uvzw[1]
+                            pv.additional_uvs[uv_index] = (uv[0],uv[1],zw[0],zw[1])
 
                     t = len(v.groups)
                     if t == 0:
@@ -1225,12 +1228,8 @@ class __PmxExporter:
 
         # Extract vertex colors as ADD UV2
         # TODO: Replace base_mesh.vertex_colors with base_mesh.color_attributes
-        vertex_colors = None
-        vertex_colors_data = None
         if self.__export_vertex_colors_as_adduv2:
-            vertex_colors = base_mesh.vertex_colors.active
-            if vertex_colors is None and len(base_mesh.vertex_colors) > 0:
-                vertex_colors = base_mesh.vertex_colors[0]
+            vertex_colors = base_mesh.color_attributes.active_color
             if vertex_colors:
                 vertex_colors_data = [c.color for c in vertex_colors.data]
 
@@ -1239,19 +1238,26 @@ class __PmxExporter:
                     for loop_data in uv1_layer.data:
                         loop_data.uv = (0, 1.0)
 
-                if "UV2" not in base_mesh.uv_layers:
-                    base_mesh.uv_layers.new(name="UV2")
-                if "_UV2" not in base_mesh.uv_layers:
-                    base_mesh.uv_layers.new(name="_UV2")
+                if vertex_colors.domain == "POINT":
+                    logging.info("Export vertex colors as ADD UV2 in POINT domain")
+                    for vertex_idx, color in enumerate(vertex_colors_data):
+                        base_vertices[vertex_idx][0].add_uvs[1] = ((color[0], color[1]),(color[2], color[3]))
 
-                uv2_layer = base_mesh.uv_layers["UV2"]
-                uv2_zw_layer = base_mesh.uv_layers["_UV2"]
+                    self.__add_uv_count = max(self.__add_uv_count,2)
 
-                for loop_idx, color in enumerate(vertex_colors_data):
-                    if loop_idx < len(uv2_layer.data):
-                        # Pre-flip V coordinates to compensate for flipUV_V processing
-                        uv2_layer.data[loop_idx].uv = (color[0], 1.0 - color[1])
-                        uv2_zw_layer.data[loop_idx].uv = (color[2], 1.0 - color[3])
+                elif vertex_colors.domain == "CORNER":
+                    if "UV2" not in base_mesh.uv_layers:
+                        base_mesh.uv_layers.new(name="UV2")
+                    if "_UV2" not in base_mesh.uv_layers:
+                        base_mesh.uv_layers.new(name="_UV2")
+                    uv2_layer = base_mesh.uv_layers["UV2"]
+                    uv2_zw_layer = base_mesh.uv_layers["_UV2"]
+
+                    for loop_idx, color in enumerate(vertex_colors_data):
+                        uv2_layer.data[loop_idx].uv = (color[0], color[1])
+                        uv2_zw_layer.data[loop_idx].uv = (color[2], color[3])
+
+
                 logging.info("Export vertex colors as ADD UV2")
 
         # Process UV layers
